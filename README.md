@@ -4,6 +4,14 @@ BerryBrowser CJK extends [sw7ft/chromium-for-bb10](https://github.com/sw7ft/chro
 
 The project ships patches against pinned upstream revisions. The complete Chromium checkout, SDK, and packaged runtime files are build prerequisites. See the [Chinese handoff and test notes](docs/BERRY_BROWSER_CJK.md).
 
+## Download and install
+
+**Requires a rooted BlackBerry 10 phone.** The first release was tested on a rooted BlackBerry Passport SQW100-4 running BB10 10.3.3.3216.
+
+**必须使用已 root 的 BlackBerry 10 手机。** 首个发布版已在上述 Passport 真机上测试。
+
+[Download the tested Build 125 BAR](https://github.com/guyiicn/berrybrower-cjk/releases/download/v3.0.2.125/BerryBrowserV3-3.0.2-build125-baseline.bar) · [Release notes](https://github.com/guyiicn/berrybrower-cjk/releases/tag/v3.0.2.125)
+
 ## Build
 
 Install Docker, Git and Chromium's `depot_tools`. Run these commands from the repository root on a Linux host:
