@@ -1,0 +1,4 @@
+src	7435e232ccfb88db1e7b3c5d0576dc9551e3b3be	chromium.patch
+src/v8	6372efd0ead5d2da7296c9aa02c9bebce4ae7ff4	v8.patch
+src/third_party/skia	349c1179c43ef46f2804404952b9460dc007d76a	skia.patch
+src/third_party/webrtc	b0cc68e61205fd11a7256a6e85307ec17ad95790	webrtc.patch

@@ -1,0 +1,6 @@
+/src/
+/.cipd/
+/.gclient_entries
+/.gclient_previous_sync_commits
+/*.bar
+/phase1-build.log

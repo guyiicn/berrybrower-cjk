@@ -1,0 +1,29 @@
+target_os = "qnx"
+target_cpu = "arm"
+is_debug = false
+dcheck_always_on = false
+is_component_build = false
+use_sysroot = false
+treat_warnings_as_errors = false
+clang_base_path = "/usr/lib/llvm-17"
+clang_use_chrome_plugins = false
+use_lld = false
+enable_nacl = false
+use_custom_libcxx = false
+is_clang = true
+use_glib = false
+use_dbus = false
+enable_rust = false
+use_v8_context_snapshot = false
+symbol_level = 1
+use_ozone = true
+ozone_platform = "qnx_screen"
+ozone_platform_headless = true
+ozone_platform_qnx_screen = true
+
+# QNX Screen uses the device EGL/GLES backend directly.
+angle_enable_gl = false
+
+
+# QNX has no Perfetto system-wide tracing shared-memory backend.
+enable_perfetto_ipc = false

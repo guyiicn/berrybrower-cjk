@@ -1,0 +1,1605 @@
+diff --git a/base/allocator/partition_allocator/src/partition_alloc/partition_alloc_base/debug/stack_trace_posix.cc b/base/allocator/partition_allocator/src/partition_alloc/partition_alloc_base/debug/stack_trace_posix.cc
+index caa5791bb84d6722c02359e84631a3acfc87696b..3e226e0505551d6e6b85a4b9b38fcac1df6d7435 100644
+--- a/base/allocator/partition_allocator/src/partition_alloc/partition_alloc_base/debug/stack_trace_posix.cc
++++ b/base/allocator/partition_allocator/src/partition_alloc/partition_alloc_base/debug/stack_trace_posix.cc
+@@ -12,7 +12,7 @@
+ #include <string.h>
+ #include <unistd.h>
+ 
+-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_APPLE)
++#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_QNX)
+ #include <link.h>  // For ElfW() macro.
+ #endif
+ 
+@@ -25,7 +25,7 @@ namespace partition_alloc::internal::base::debug {
+ 
+ namespace {
+ 
+-#if !BUILDFLAG(IS_APPLE)
++#if !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_QNX)
+ 
+ constexpr size_t kBufferSize = 4096u;
+ 
+@@ -357,7 +357,14 @@ void PrintStackTraceInternal(const void** trace, size_t count) {
+   }
+   close(fd);
+ }
+-#endif  // !BUILDFLAG(IS_APPLE)
++#elif BUILDFLAG(IS_QNX)
++// BB10 has no /proc/self/maps. Print raw addresses for offline symbolization.
++void PrintStackTraceInternal(const void* const* trace, size_t count) {
++  for (size_t i = 0; i < count; ++i) {
++    OutputStackTrace(i, reinterpret_cast<uintptr_t>(trace[i]), 0u, "???", 0u);
++  }
++}
++#endif
+ 
+ #if BUILDFLAG(IS_APPLE)
+ // Since /proc/self/maps is not available, use dladdr() to obtain module
+diff --git a/base/allocator/partition_allocator/src/partition_alloc/partition_alloc_base/rand_util_posix.cc b/base/allocator/partition_allocator/src/partition_alloc/partition_alloc_base/rand_util_posix.cc
+index 20d4c66cc52b5e7a6f715acab0d1bed21ff7faac..3b6d4a83a1ee97046665cd8d34e35b128ff49d2f 100644
+--- a/base/allocator/partition_allocator/src/partition_alloc/partition_alloc_base/rand_util_posix.cc
++++ b/base/allocator/partition_allocator/src/partition_alloc/partition_alloc_base/rand_util_posix.cc
+@@ -8,7 +8,6 @@
+ #include <fcntl.h>
+ #include <stddef.h>
+ #include <stdint.h>
+-#include <sys/syscall.h>
+ #include <unistd.h>
+ #include <sstream>
+ 
+@@ -19,6 +18,10 @@
+ #include "base/allocator/partition_allocator/src/partition_alloc/partition_alloc_base/posix/eintr_wrapper.h"
+ #include "build/build_config.h"
+ 
++#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
++#include <sys/syscall.h>
++#endif
++
+ #if BUILDFLAG(IS_MAC)
+ // TODO(crbug.com/995996): Waiting for this header to appear in the iOS SDK.
+ // (See below.)
+diff --git a/base/debug/stack_trace_posix.cc b/base/debug/stack_trace_posix.cc
+index 5938b469752774200e091c5927b5317555cddbc3..340908258bcf6c53229709155bedf46fa5e45332 100644
+--- a/base/debug/stack_trace_posix.cc
++++ b/base/debug/stack_trace_posix.cc
+@@ -15,7 +15,9 @@
+ #include <string.h>
+ #include <sys/param.h>
+ #include <sys/stat.h>
++#if !defined(__QNXNTO__)
+ #include <sys/syscall.h>
++#endif
+ #include <sys/types.h>
+ #include <unistd.h>
+ #if BUILDFLAG(IS_QNX)
+diff --git a/base/posix/can_lower_nice_to.cc b/base/posix/can_lower_nice_to.cc
+index 123ee3a408e2e3358d2f9222b0c2168d39ebdb02..2e5c5ac5083a3f6b2f6dbbd7036c31016a124f5c 100644
+--- a/base/posix/can_lower_nice_to.cc
++++ b/base/posix/can_lower_nice_to.cc
+@@ -5,6 +5,7 @@
+ #include "base/posix/can_lower_nice_to.h"
+ 
+ #include <limits.h>
++#include <sys/time.h>
+ #include <sys/resource.h>
+ #include <sys/types.h>
+ #include <unistd.h>
+diff --git a/base/process/launch_posix.cc b/base/process/launch_posix.cc
+index ecf9ee2a43fd4f68c7eacfc3d2966d5fb7269a7b..f16a2084651e701b79b775f4ed856c5a1afb8990 100644
+--- a/base/process/launch_posix.cc
++++ b/base/process/launch_posix.cc
+@@ -14,9 +14,11 @@
+ #include <stddef.h>
+ #include <stdint.h>
+ #include <stdlib.h>
++#include <sys/time.h>
+ #include <sys/resource.h>
++#if !defined(__QNXNTO__)
+ #include <sys/syscall.h>
+-#include <sys/time.h>
++#endif
+ #include <sys/types.h>
+ #include <sys/wait.h>
+ #include <unistd.h>
+diff --git a/base/rand_util_posix.cc b/base/rand_util_posix.cc
+index 4982a4556f24806c0d32b8ca4abfed10a6ad4775..d69ed55bbb38ea45fb089a5f864c72322f93bfd8 100644
+--- a/base/rand_util_posix.cc
++++ b/base/rand_util_posix.cc
+@@ -8,7 +8,6 @@
+ #include <fcntl.h>
+ #include <stddef.h>
+ #include <stdint.h>
+-#include <sys/syscall.h>
+ #include <sys/utsname.h>
+ #include <unistd.h>
+ 
+@@ -23,6 +22,7 @@
+ #include "build/build_config.h"
+ 
+ #if (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && !BUILDFLAG(IS_NACL)
++#include <sys/syscall.h>
+ #include "third_party/lss/linux_syscall_support.h"
+ #elif BUILDFLAG(IS_MAC)
+ // TODO(crbug.com/995996): Waiting for this header to appear in the iOS SDK.
+diff --git a/base/test/BUILD.gn b/base/test/BUILD.gn
+index a953ae450b2d82ebf8f50a871bf841b1fb1760c3..ea0f6476538d6d2c48f82d78c967fcba79c01f27 100644
+--- a/base/test/BUILD.gn
++++ b/base/test/BUILD.gn
+@@ -95,8 +95,6 @@ static_library("test_support") {
+     "null_task_runner.h",
+     "perf_log.cc",
+     "perf_log.h",
+-    "perf_test_suite.cc",
+-    "perf_test_suite.h",
+     "perf_time_logger.cc",
+     "perf_time_logger.h",
+     "power_monitor_test.cc",
+@@ -181,12 +179,19 @@ static_library("test_support") {
+   deps = [
+     "//base/third_party/dynamic_annotations",
+     "//build:chromeos_buildflags",
+-    "//third_party/google_benchmark",
+     "//third_party/icu:icuuc",
+     "//third_party/libxml:libxml_utils",
+     "//third_party/libxml:xml_reader",
+   ]
+ 
++  if (!is_qnx) {
++    sources += [
++      "perf_test_suite.cc",
++      "perf_test_suite.h",
++    ]
++    deps += [ "//third_party/google_benchmark" ]
++  }
++
+   if (enable_base_tracing) {
+     public_deps += [ "//third_party/perfetto:perfetto_test_support" ]
+     if (!is_qnx) {
+@@ -384,6 +389,14 @@ source_set("test_support_perf") {
+     "//testing/gtest",
+   ]
+ 
++  if (is_qnx) {
++    sources += [
++      "perf_test_suite.cc",
++      "perf_test_suite.h",
++    ]
++    deps += [ "//third_party/google_benchmark" ]
++  }
++
+   public_configs = [ ":perf_test_config" ]
+ }
+ 
+diff --git a/build/config/qnx/BUILD.gn b/build/config/qnx/BUILD.gn
+index 29af84ca627ba34296f1b2feda97c3abf4c2d70e..b8855e142bfa89b49b46593f0e5ecce36328d184 100644
+--- a/build/config/qnx/BUILD.gn
++++ b/build/config/qnx/BUILD.gn
+@@ -20,6 +20,7 @@ config("system") {
+     "-D__arm__",
+     "-D_NTO_HDR_DIR_=${qnx_sysroot}/include/",
+     "-D_NO_CPP_INLINES",
++    "-DQNX_STRING_WRAPPERS_CXX_LINKAGE",
+     "-D_Const_return=",     # Prevent const/non-const overload conflict in string.h
+     "-D_QNX_SOURCE",        # Enable all POSIX extensions
+ 
+diff --git a/content/browser/child_process_launcher_helper_qnx.cc b/content/browser/child_process_launcher_helper_qnx.cc
+index 38c4337100ee7ddf25eef8b0c73dddd4c47a097a..b68442519a99e6807afa2d595bd697713ea61f9f 100644
+--- a/content/browser/child_process_launcher_helper_qnx.cc
++++ b/content/browser/child_process_launcher_helper_qnx.cc
+@@ -156,6 +156,7 @@ bool ChildProcessLauncherHelper::BeforeLaunchOnLauncherThread(
+   static const char* const kForwardEnv[] = {
+       "LD_LIBRARY_PATH",
+       "QNX_CA_BUNDLE",
++      "QNX_FONT_DIR",
+       "TMPDIR",
+       "HOME",
+       "CHROME_EXE_PATH",
+diff --git a/content/renderer/render_thread_impl.cc b/content/renderer/render_thread_impl.cc
+index cd845d81fdb17fd34921a78e5730b67724a46313..74b45687155288a0a93f2a014fc77db41115312e 100644
+--- a/content/renderer/render_thread_impl.cc
++++ b/content/renderer/render_thread_impl.cc
+@@ -177,7 +177,10 @@
+ #include "v8/include/v8-extension.h"
+ 
+ #if BUILDFLAG(IS_QNX)
++#if __has_include(<link.h>)
+ #include <link.h>
++#define BERRY_HAS_DL_ITERATE_PHDR 1
++#endif
+ 
+ #include "third_party/blink/public/web/web_heap.h"
+ #include "v8/include/v8-callbacks.h"
+@@ -339,6 +342,7 @@ static void QnxSampleHeapMB(size_t* used_mb, size_t* total_mb) {
+   }
+ }
+ 
++#if defined(BERRY_HAS_DL_ITERATE_PHDR)
+ // One line per loaded module: "QNX:LIBMAP <lo>-<hi> <path>". The GL-thread
+ // crashes land at a pc inside some shared object whose ASLR base changes every
+ // launch; the crash handler can't dladdr it (dladdr faults once the heap is
+@@ -370,16 +374,20 @@ static int QnxLibmapCallback(const struct dl_phdr_info* info,
+   return 0;
+ }
+ 
++#endif  // defined(BERRY_HAS_DL_ITERATE_PHDR)
++
+ void QnxStallHeartbeat() {
+   static base::TimeTicks s_last;
+   static double s_gc_ms_prev = 0;        // g_qnx_gc_ms_total at previous beat
+   static int s_gc_cnt_prev = 0;
+   static bool s_gc_cb_registered = false;
++#if defined(BERRY_HAS_DL_ITERATE_PHDR)
+   static int s_beats = 0;
+   // Dump the module map once, ~10s in: after the vendor EGL/GLES driver has
+   // loaded (GL init is ~2-5s) but well before the ~45s GL-thread crash.
+   if (++s_beats == 20)
+     dl_iterate_phdr(&QnxLibmapCallback, nullptr);
++#endif
+   // Log any single freeze at/above this immediately (with attribution), so a
+   // session that crashes before a full window still yields data. X on the
+   // Passport routinely freezes multiple seconds, so 1.5s is a low bar.
+diff --git a/content/shell/app/shell_main.cc b/content/shell/app/shell_main.cc
+index 661600924b2e198fd3ee63adabe90eb06928a7af..c4e3137a713291b84fff5c56339c60c93c4dc39a 100644
+--- a/content/shell/app/shell_main.cc
++++ b/content/shell/app/shell_main.cc
+@@ -228,7 +228,12 @@ int main(int argc, const char** argv) {
+     setenv("CHROME_EXE_PATH", argv[0], 1);
+     char marker_path[1024];
+     marker_path[0] = '\0';
+-    const char* last_slash = strrchr(argv[0], '/');
++    // Avoid the QNX SDK's C++ strrchr wrapper during early startup.
++    const char* last_slash = nullptr;
++    for (const char* p = argv[0]; *p; ++p) {
++      if (*p == '/')
++        last_slash = p;
++    }
+     if (last_slash) {
+       size_t dir_len = static_cast<size_t>(last_slash - argv[0] + 1);
+       if (dir_len + 20 < sizeof(marker_path)) {
+diff --git a/content/shell/browser/berry_browser_chrome.cc b/content/shell/browser/berry_browser_chrome.cc
+index f31b3fba0bb1a06c860e83a335933a8a916b89f4..5cf92a91299b7064081647b565d83f300f416165 100644
+--- a/content/shell/browser/berry_browser_chrome.cc
++++ b/content/shell/browser/berry_browser_chrome.cc
+@@ -3,6 +3,13 @@
+ 
+ #include "content/shell/browser/berry_browser_chrome.h"
+ 
++#include <algorithm>
++
++#include "base/strings/utf_string_conversions.h"
++#include "cc/paint/skia_paint_canvas.h"
++#include "ui/gfx/canvas.h"
++#include "ui/gfx/render_text.h"
++
+ #include <cstdio>
+ #include "third_party/skia/include/core/SkColor.h"
+ #include "third_party/skia/include/core/SkFont.h"
+@@ -33,7 +40,6 @@ BerryBrowserChrome::~BerryBrowserChrome() = default;
+ 
+ void BerryBrowserChrome::SetUrl(const std::string& url) {
+   url_ = url;
+-  if (!editing_) edit_text_ = url;
+ }
+ 
+ void BerryBrowserChrome::SetLoading(bool loading) { loading_ = loading; }
+@@ -44,43 +50,98 @@ void BerryBrowserChrome::SetWindowCount(int count) {
+ }
+ 
+ void BerryBrowserChrome::StartEditing() {
++  if (editing_)
++    return;
+   editing_ = true;
+   edit_text_.clear();
+-  replace_all_on_next_input_ = false;
++  selection_ = gfx::Range(0);
++  composition_ = gfx::Range::InvalidRange();
+ }
+ 
+ void BerryBrowserChrome::CancelEditing() {
+   editing_ = false;
+-  edit_text_ = url_;
+-  replace_all_on_next_input_ = false;
++  edit_text_.clear();
++  selection_ = gfx::Range(0);
++  composition_ = gfx::Range::InvalidRange();
+ }
+ 
+-void BerryBrowserChrome::OnChar(char c) {
+-  editing_ = true;
+-  if (replace_all_on_next_input_) {
+-    edit_text_.clear();
+-    replace_all_on_next_input_ = false;
+-  }
+-  edit_text_ += c;
++gfx::Range BerryBrowserChrome::EditRange() const {
++  return composition_.IsValid() ? composition_ : selection_;
++}
++
++size_t BerryBrowserChrome::TextOffset(size_t wide_index) const {
++  const auto wide = base::UTF16ToWide(edit_text_);
++  return base::WideToUTF16(std::wstring_view(wide).substr(
++      0, std::min(wide_index, wide.size()))).size();
++}
++
++void BerryBrowserChrome::InsertText(std::u16string text, int cursor) {
++  const auto range = EditRange();
++  edit_text_.replace(range.GetMin(), range.length(), text);
++  const auto wide = base::UTF16ToWide(edit_text_);
++  const size_t start = base::UTF16ToWide(
++      std::u16string_view(edit_text_).substr(0, range.GetMin())).size();
++  const int64_t target = cursor > 0
++      ? static_cast<int64_t>(start + base::UTF16ToWide(text).size()) + cursor - 1
++      : static_cast<int64_t>(start) + cursor;
++  selection_ = gfx::Range(TextOffset(
++      std::clamp<int64_t>(target, 0, wide.size())));
++  FinishComposition();
++}
++
++void BerryBrowserChrome::ComposeText(std::u16string text, int cursor) {
++  const auto range = EditRange();
++  InsertText(text, cursor);
++  composition_ = gfx::Range(range.GetMin(), range.GetMin() + text.size());
++}
++
++void BerryBrowserChrome::FinishComposition() {
++  composition_ = gfx::Range::InvalidRange();
++}
++
++void BerryBrowserChrome::DeleteSurrounding(int before, int after) {
++  if (before < 0 || after < 0)
++    return;
++  const size_t start = base::UTF16ToWide(
++      std::u16string_view(edit_text_).substr(0, selection_.GetMin())).size();
++  const size_t end = base::UTF16ToWide(
++      std::u16string_view(edit_text_).substr(0, selection_.GetMax())).size();
++  const size_t left = TextOffset(start - std::min(start, static_cast<size_t>(before)));
++  const size_t right = TextOffset(end + static_cast<size_t>(after));
++  edit_text_.erase(left, right - left);
++  selection_ = gfx::Range(left);
++  FinishComposition();
++}
++
++void BerryBrowserChrome::Select(int anchor, int cursor) {
++  if (anchor >= 0 && cursor >= 0)
++    selection_ = gfx::Range(TextOffset(anchor), TextOffset(cursor));
++}
++
++void BerryBrowserChrome::ComposeRegion(int start, int end) {
++  if (start >= 0 && end >= start)
++    composition_ = gfx::Range(TextOffset(start), TextOffset(end));
++}
++
++void BerryBrowserChrome::MoveCursor(int direction) {
++  const size_t offset = direction < 0 ? selection_.GetMin() : selection_.GetMax();
++  const auto wide = base::UTF16ToWide(
++      std::u16string_view(edit_text_).substr(0, offset));
++  const size_t index = wide.size();
++  const size_t next = !selection_.is_empty() ? index :
++      direction < 0 ? index - (index != 0) : index + 1;
++  selection_ = gfx::Range(TextOffset(next));
++  FinishComposition();
+ }
+ 
+ void BerryBrowserChrome::OnBackspace() {
+-  editing_ = true;
+-  replace_all_on_next_input_ = false;
+-  if (!edit_text_.empty())
+-    edit_text_.pop_back();
++  DeleteSurrounding(selection_.is_empty() ? 1 : 0, 0);
+ }
+ 
+ void BerryBrowserChrome::OnEnter() {
+-  if (edit_text_.empty()) {
+-    url_committed_ = false;
+-    editing_ = false;
+-    edit_text_ = url_;
+-    return;
+-  }
+-  committed_url_ = edit_text_;
+-  url_committed_ = true;
+-  editing_ = false;
++  committed_url_ = base::UTF16ToUTF8(edit_text_);
++  url_committed_ = !edit_text_.empty();
++  CancelEditing();
+ }
+ 
+ gfx::Rect BerryBrowserChrome::GetWebContentBounds() const {
+@@ -136,36 +197,25 @@ void BerryBrowserChrome::Paint(SkCanvas* canvas) {
+                         url_rect_.width(), url_rect_.height()),
+       4, 4, url_border);
+ 
+-  // URL text — snapshot members so concurrent SetUrl (UI thread) cannot
+-  // invalidate c_str() while drawString runs during PresentCanvas (Navigator
+-  // path repaints at ~60fps while DDG same-doc navigations update the bar).
+-  SkFont font;
+-  font.setSize(16);
+-  SkPaint text_paint;
+-  text_paint.setColor(SkColorSetRGB(243, 230, 239));
+-  const std::string display = editing_ ? edit_text_ : url_;
+-  const char* draw_text = display.c_str();
+-  if (editing_ && edit_text_.empty()) {
+-    text_paint.setColor(SkColorSetRGB(196, 160, 184));
+-    draw_text = "Search or enter address";
+-  }
+-  canvas->drawString(draw_text,
+-                     url_rect_.x() + 8, url_rect_.y() + 28,
+-                     font, text_paint);
+-
++  cc::SkiaPaintCanvas paint_canvas(canvas);
++  gfx::Canvas text_canvas(&paint_canvas, 1.f);
++  auto text = gfx::RenderText::CreateRenderText();
++  text->SetDisplayRect(gfx::Rect(url_rect_.x() + 8, url_rect_.y() + 2,
++                                 url_rect_.width() - 16,
++                                 url_rect_.height() - 4));
++  text->SetCursorEnabled(editing_);
++  const bool placeholder = editing_ && edit_text_.empty();
++  text->SetText(placeholder ? u"Search or enter address" :
++                editing_ ? edit_text_ : base::UTF8ToUTF16(url_));
++  text->SetColor(placeholder ? SkColorSetRGB(196, 160, 184) :
++                              SkColorSetRGB(243, 230, 239));
+   if (editing_) {
+-    // Cursor
+-    float tw = editing_ && !edit_text_.empty()
+-                   ? font.measureText(display.c_str(), display.size(),
+-                                      SkTextEncoding::kUTF8)
+-                   : 0.f;
+-    SkPaint cursor_paint;
+-    cursor_paint.setColor(SkColorSetRGB(233, 84, 32));
+-    canvas->drawRect(SkRect::MakeXYWH(url_rect_.x() + 8 + tw,
+-                                       url_rect_.y() + 8,
+-                                       2, url_rect_.height() - 16),
+-                     cursor_paint);
++    text->SetCursorPosition(selection_.end());
++    text->SelectRange(selection_);
++    if (composition_.IsValid())
++      text->SetCompositionRange(composition_);
+   }
++  text->Draw(&text_canvas);
+ }
+ 
+ void BerryBrowserChrome::PaintButton(SkCanvas* canvas, const gfx::Rect& r,
+diff --git a/content/shell/browser/berry_browser_chrome.h b/content/shell/browser/berry_browser_chrome.h
+index d9d14e4e72e1f3ded6345921a0fe8a077b6015e3..dce0ebfbc830b134323266f4457dd083f71d2b8e 100644
+--- a/content/shell/browser/berry_browser_chrome.h
++++ b/content/shell/browser/berry_browser_chrome.h
+@@ -5,6 +5,8 @@
+ #define CONTENT_SHELL_BROWSER_BERRY_BROWSER_CHROME_H_
+ 
+ #include <string>
++
++#include "ui/gfx/range/range.h"
+ #include "third_party/skia/include/core/SkCanvas.h"
+ #include "ui/gfx/geometry/rect.h"
+ 
+@@ -27,13 +29,18 @@ class BerryBrowserChrome {
+ 
+   void StartEditing();
+   void CancelEditing();
+-  void OnChar(char c);
++  void InsertText(std::u16string text, int cursor);
++  void ComposeText(std::u16string text, int cursor);
++  void FinishComposition();
++  void DeleteSurrounding(int before, int after);
++  void Select(int anchor, int cursor);
++  void ComposeRegion(int start, int end);
++  void MoveCursor(int direction);
++  const std::u16string& edit_text() const { return edit_text_; }
++  const gfx::Range& selection() const { return selection_; }
+   void OnBackspace();
+   void OnEnter();
+ 
+-  // True after StartEditing(): first printable key replaces the whole field
+-  // (standard omnibox behavior — avoids appending a query to https://.../ ).
+-
+   void Paint(SkCanvas* canvas);
+   gfx::Rect GetWebContentBounds() const;
+ 
+@@ -59,16 +66,20 @@ class BerryBrowserChrome {
+   void PaintButton(SkCanvas* canvas, const gfx::Rect& r,
+                    const char* label, bool enabled);
+ 
++  gfx::Range EditRange() const;
++  size_t TextOffset(size_t wide_index) const;
++
+   int width_, height_;
+   std::string url_;
+-  std::string edit_text_;
++  std::u16string edit_text_;
++  gfx::Range selection_;
++  gfx::Range composition_ = gfx::Range::InvalidRange();
+   std::string committed_url_;
+   bool editing_ = false;
+   bool loading_ = false;
+   bool can_go_back_ = false;
+   bool can_go_forward_ = false;
+   bool url_committed_ = false;
+-  bool replace_all_on_next_input_ = false;
+ 
+   int window_count_ = 1;
+   gfx::Rect back_rect_, forward_rect_, reload_rect_, url_rect_, share_rect_,
+diff --git a/content/shell/browser/shell_platform_delegate_qnx.cc b/content/shell/browser/shell_platform_delegate_qnx.cc
+index 53590e33cb6869b1c5dea3ef5ab0c8e9abb3b7ce..4b6a12ca2fd7f196e5f7c6084bd9002c38e24c5f 100644
+--- a/content/shell/browser/shell_platform_delegate_qnx.cc
++++ b/content/shell/browser/shell_platform_delegate_qnx.cc
+@@ -4,6 +4,7 @@
+ #include "content/shell/browser/shell_platform_delegate.h"
+ 
+ #include <bps/navigator.h>
++#include <bps/virtualkeyboard.h>
+ #include <sys/keycodes.h>
+ #include <unistd.h>
+ 
+@@ -14,6 +15,7 @@
+ 
+ #include "base/containers/contains.h"
+ #include "base/functional/bind.h"
++#include "base/no_destructor.h"
+ #include "base/qnx_hard_watchdog.h"
+ #include "base/qnx_trace.h"
+ #include "base/strings/escape.h"
+@@ -23,6 +25,7 @@
+ #include "build/build_config.h"
+ #include "content/public/browser/browser_task_traits.h"
+ #include "content/public/browser/browser_thread.h"
++#include "content/public/browser/host_zoom_map.h"
+ #include "content/public/browser/render_widget_host_view.h"
+ #include "content/public/browser/visibility.h"
+ #include "content/public/browser/web_contents.h"
+@@ -37,7 +40,9 @@
+ #include "ui/ozone/platform/qnx_screen/qnx_screen_repaint.h"
+ #include "ui/ozone/platform/qnx_screen/qnx_screen_sizes.h"
+ #include "ui/ozone/platform/qnx_screen/qnx_screen_window.h"
++#include "ui/ozone/platform/qnx_screen/qnx_system_input.h"
+ #include "ui/ozone/platform/qnx_screen/qnx_screen_window_manager.h"
++#include "third_party/blink/public/common/page/page_zoom.h"
+ #include "third_party/skia/include/core/SkCanvas.h"
+ #include "url/gurl.h"
+ 
+@@ -342,6 +347,115 @@ void EnsureWebContentsFocus() {
+     shell->web_contents()->Focus();
+ }
+ 
++void ApplyUrlBarImeEdit(ui::QnxSystemInput::Edit edit, std::u16string text,
++                        int first, int second);
++void ForwardUrlBarKey(int code, int character, int modifiers, bool pressed);
++
++ui::QnxSystemInput& UrlBarInput() {
++  static base::NoDestructor<ui::QnxSystemInput> input(
++      base::BindRepeating(&ApplyUrlBarImeEdit),
++      base::BindRepeating(&ForwardUrlBarKey));
++  return *input;
++}
++
++void UpdateUrlBarSurroundingText() EXCLUSIVE_LOCKS_REQUIRED(g_chrome_lock) {
++  UrlBarInput().SetSurroundingText(g_chrome->edit_text(),
++                                   g_chrome->selection().start(),
++                                   g_chrome->selection().end());
++}
++
++void CloseUrlBarInput() {
++  UrlBarInput().Blur();
++  virtualkeyboard_hide();
++}
++
++void ApplyUrlBarImeEdit(ui::QnxSystemInput::Edit edit, std::u16string text,
++                        int first, int second) {
++  {
++    base::AutoLock lock(g_chrome_lock);
++    if (!g_chrome || !g_url_bar_editing)
++      return;
++    switch (edit) {
++      case ui::QnxSystemInput::Edit::kCommit:
++        g_chrome->InsertText(std::move(text), first);
++        break;
++      case ui::QnxSystemInput::Edit::kCompose:
++        g_chrome->ComposeText(std::move(text), first);
++        break;
++      case ui::QnxSystemInput::Edit::kFinish:
++        g_chrome->FinishComposition();
++        break;
++      case ui::QnxSystemInput::Edit::kDelete:
++        g_chrome->DeleteSurrounding(first, second);
++        break;
++      case ui::QnxSystemInput::Edit::kSelect:
++        g_chrome->Select(first, second);
++        break;
++      case ui::QnxSystemInput::Edit::kComposeRegion:
++        g_chrome->ComposeRegion(first, second);
++        break;
++    }
++    UpdateUrlBarSurroundingText();
++  }
++  RepaintChrome();
++}
++
++void ForwardUrlBarKey(int code, int character, int modifiers, bool pressed) {
++  if (!pressed)
++    return;
++  bool finish = false;
++  bool navigate = false;
++  {
++    base::AutoLock lock(g_chrome_lock);
++    if (!g_url_bar_editing || !g_chrome)
++      return;
++    const int sym = character ? character : code;
++    switch (sym) {
++      case KEYCODE_RETURN:
++      case KEYCODE_KP_ENTER:
++      case 0x0d:
++      case 0x0a:
++        g_chrome->OnEnter();
++        navigate = g_chrome->url_committed();
++        finish = true;
++        break;
++      case KEYCODE_ESCAPE:
++        g_chrome->CancelEditing();
++        finish = true;
++        break;
++      case KEYCODE_BACKSPACE:
++      case 0x08:
++        g_chrome->OnBackspace();
++        break;
++      case KEYCODE_DELETE:
++        g_chrome->DeleteSurrounding(0, g_chrome->selection().is_empty() ? 1 : 0);
++        break;
++      case KEYCODE_LEFT:
++      case KEYCODE_RIGHT:
++        g_chrome->MoveCursor(sym == KEYCODE_LEFT ? -1 : 1);
++        break;
++      default:
++        if ((modifiers & KEYMOD_CTRL) && (sym == 'a' || sym == 'A')) {
++          g_chrome->Select(0, g_chrome->edit_text().size());
++        } else if (sym >= 0x20 && sym < 0xE000 && !(modifiers & KEYMOD_CTRL)) {
++          g_chrome->InsertText(std::u16string(1, static_cast<char16_t>(sym)), 1);
++        }
++        break;
++    }
++    if (finish)
++      g_url_bar_editing = false;
++    else
++      UpdateUrlBarSurroundingText();
++  }
++  if (finish)
++    CloseUrlBarInput();
++  if (navigate)
++    CommitUrlBarNavigation();
++  if (finish)
++    EnsureWebContentsFocus();
++  RepaintChrome();
++}
++
+ void PaintChromeOverlay(SkCanvas* canvas) {
+   base::AutoLock lock(g_chrome_lock);
+   if (g_chrome)
+@@ -362,20 +476,19 @@ bool QnxTouchCallback(int type, int x, int y) {
+       return false;
+     shell = g_active_shell;
+     hit = g_chrome->HitTest(x, y);
+-    if (hit == BerryBrowserChrome::HitResult::kNone) {
+-      was_editing = g_url_bar_editing;
+-      if (g_url_bar_editing) {
+-        g_url_bar_editing = false;
+-        g_chrome->CancelEditing();
+-      }
+-    } else {
+-      loading = g_chrome->loading();
++    if (hit != BerryBrowserChrome::HitResult::kUrlBar && g_url_bar_editing) {
++      was_editing = true;
++      g_url_bar_editing = false;
++      g_chrome->CancelEditing();
+     }
++    loading = g_chrome->loading();
+   }
+ 
++  if (was_editing) {
++    CloseUrlBarInput();
++    RepaintChrome();
++  }
+   if (hit == BerryBrowserChrome::HitResult::kNone) {
+-    if (was_editing)
+-      RepaintChrome();
+     EnsureWebContentsFocus();
+     return false;
+   }
+@@ -411,10 +524,15 @@ bool QnxTouchCallback(int type, int x, int y) {
+       BerryCycleWindow();
+       break;
+     case BerryBrowserChrome::HitResult::kUrlBar: {
+-      base::AutoLock lock(g_chrome_lock);
+-      g_url_bar_editing = true;
+-      if (g_chrome)
++      {
++        base::AutoLock lock(g_chrome_lock);
++        g_url_bar_editing = true;
+         g_chrome->StartEditing();
++      }
++      UrlBarInput().Focus(/*priority=*/true);
++      virtualkeyboard_change_options_v2(VIRTUALKEYBOARD_LAYOUT_DEFAULT,
++                                         VIRTUALKEYBOARD_ENTER_GO, false);
++      virtualkeyboard_show();
+       QNX_NAV_LOG("BerryNav: url bar edit start\n");
+       break;
+     }
+@@ -425,47 +543,22 @@ bool QnxTouchCallback(int type, int x, int y) {
+   return true;
+ }
+ 
+-bool QnxKeyCallback(int sym, bool down) {
+-  if (!down)
+-    return false;
+-
++bool QnxKeyCallback(const ui::QnxRawKey& key, bool pressed) {
++  bool editing;
+   {
+     base::AutoLock lock(g_chrome_lock);
+-    if (g_url_bar_editing && g_chrome) {
+-      if (sym == KEYCODE_RETURN || sym == KEYCODE_KP_ENTER || sym == 0x0d ||
+-          sym == 0x0a) {
+-        QNX_NAV_LOG_FMT("BerryNav: enter key sym=0x%x editing=1\n", sym);
+-        g_chrome->OnEnter();
+-        RepaintChrome();
+-        CommitUrlBarNavigation();
+-        return true;
+-      }
+-      if (sym == KEYCODE_BACKSPACE) {
+-        g_chrome->OnBackspace();
+-        RepaintChrome();
+-        return true;
+-      }
+-      if (sym == KEYCODE_ESCAPE) {
+-        g_url_bar_editing = false;
+-        g_chrome->CancelEditing();
+-        RepaintChrome();
+-        EnsureWebContentsFocus();
+-        return true;
+-      }
+-      if (sym >= 0x20 && sym < 0xE000) {
+-        g_chrome->OnChar(static_cast<char>(sym));
+-        RepaintChrome();
+-        return true;
+-      }
+-      return true;
++    editing = g_url_bar_editing && g_chrome;
++  }
++  if (editing) {
++    if (key.character == KEYCODE_ESCAPE || (key.modifiers & KEYMOD_CTRL) ||
++        !UrlBarInput().DispatchKey(key, pressed)) {
++      ForwardUrlBarKey(key.code, key.character, key.modifiers, pressed);
+     }
++    return true;
+   }
+ 
+-  if (sym == KEYCODE_RETURN || sym == KEYCODE_KP_ENTER || sym == 0x0d ||
+-      sym == 0x0a) {
+-    QNX_NAV_LOG_FMT("BerryNav: enter key sym=0x%x editing=0 page\n", sym);
+-  }
+-  EnsureWebContentsFocus();
++  if (pressed)
++    EnsureWebContentsFocus();
+   return false;
+ }
+ 
+@@ -483,6 +576,11 @@ void QnxVisibilityCallback(bool visible) {
+   {
+     base::AutoLock lock(g_chrome_lock);
+     shell = g_active_shell;
++    if (!visible && g_url_bar_editing && g_chrome) {
++      g_url_bar_editing = false;
++      g_chrome->CancelEditing();
++      CloseUrlBarInput();
++    }
+   }
+   if (!shell || !shell->web_contents())
+     return;
+@@ -576,6 +674,10 @@ void ShellPlatformDelegate::CreatePlatformWindow(
+ 
+   {
+     base::AutoLock lock(g_chrome_lock);
++    if (g_url_bar_editing && g_chrome) {
++      g_chrome->CancelEditing();
++      CloseUrlBarInput();
++    }
+     g_active_shell = shell;
+     int rw = initial_size.width() > 0 ? initial_size.width() : 720;
+     int rh = initial_size.height() > 0 ? initial_size.height() : 720;
+@@ -600,6 +702,10 @@ void ShellPlatformDelegate::CleanUp(Shell* shell) {
+   if (g_active_shell == shell) {
+     base::AutoLock lock(g_chrome_lock);
+     g_active_shell = nullptr;
++    if (g_url_bar_editing && g_chrome) {
++      g_chrome->CancelEditing();
++      CloseUrlBarInput();
++    }
+     g_url_bar_editing = false;
+     for (Shell* s : Shell::windows()) {
+       if (s != shell) {
+@@ -614,6 +720,12 @@ void ShellPlatformDelegate::CleanUp(Shell* shell) {
+ }
+ 
+ void ShellPlatformDelegate::SetContents(Shell* shell) {
++  if (getenv("BERRY_PASSPORT_720_PAGE_ZOOM")) {
++    auto* zoom_map = HostZoomMap::GetForWebContents(shell->web_contents());
++    const double level = blink::PageZoomFactorToZoomLevel(720.0 / 540.0);
++    if (zoom_map->GetDefaultZoomLevel() != level)
++      zoom_map->SetDefaultZoomLevel(level);
++  }
+   aura::Window* content = shell->web_contents()->GetNativeView();
+   aura::Window* parent = platform_->aura->host()->window();
+   if (!parent->Contains(content))
+@@ -703,8 +815,6 @@ void ShellPlatformDelegate::SetIsLoading(Shell* shell, bool loading) {
+   g_last_loading = loading;
+   g_chrome->SetLoading(loading);
+   RepaintChrome();
+-  if (!loading)
+-    g_url_bar_editing = false;
+ }
+ 
+ void ShellPlatformDelegate::SetTitle(Shell* shell,
+diff --git a/deploy/README.md b/deploy/README.md
+index 51aa1ff45c0a7dea9a29212a261568d4aa4cc646..cee6300f520a5e5d314d14e606fad2f24c18db2a 100644
+--- a/deploy/README.md
++++ b/deploy/README.md
+@@ -1,5 +1,7 @@
+ # Chromium content_shell for BlackBerry 10
+ 
++For the installed Berry Browser GUI, see the [BerryBrowser CJK handoff](BERRY_BROWSER_CJK.md).
++
+ A working build of Chromium's `content_shell` for QNX 8.0.0 / ARMv7-A,
+ tested on the BlackBerry Passport.
+ 
+diff --git a/deploy/berry-shell-bar/bar-descriptor-v3.xml b/deploy/berry-shell-bar/bar-descriptor-v3.xml
+index 01d898add92df9bbd506c1bf3028ce9163c9bcf4..6e602850070bc84e3dbe3ac14ad23e2e901da1fd 100644
+--- a/deploy/berry-shell-bar/bar-descriptor-v3.xml
++++ b/deploy/berry-shell-bar/bar-descriptor-v3.xml
+@@ -19,6 +19,7 @@
+          "<dir>/content_shell.exe"; this makes the .bar self-contained so a clean
+          install runs without the SSH hot-swap (deploy-binary.sh). -->
+     <asset path="payload/content_shell" type="Qnx/Elf">content_shell.exe</asset>
++    <asset path="payload/berry_ime_helper" type="Qnx/Elf">berry_ime_helper</asset>
+     <asset path="payload/libstdc++.so.6" type="Qnx/Elf">libstdc++.so.6</asset>
+     <asset path="payload/libgcc_s.so.1" type="Qnx/Elf">libgcc_s.so.1</asset>
+     <asset path="payload/libm.so.2" type="Qnx/Elf">libm.so.2</asset>
+@@ -33,6 +34,8 @@
+     <asset path="payload/icudtl.dat">icudtl.dat</asset>
+     <asset path="payload/snapshot_blob.bin">snapshot_blob.bin</asset>
+     <asset path="payload/root_store.certs">root_store.certs</asset>
++    <asset path="fonts/NotoSansSC-Regular.otf">fonts/NotoSansSC-Regular.otf</asset>
++    <asset path="Noto-Sans-CJK-OFL.txt">Noto-Sans-CJK-OFL.txt</asset>
+ 
+     <!-- Local start page (omnibox + bookmarks + Restart) loaded by default. -->
+     <asset path="home.html">home.html</asset>
+diff --git a/deploy/berry-shell-bar/launcher.c b/deploy/berry-shell-bar/launcher.c
+index 6443259505f42a39d28bbc0c0e483458c4e9737d..00057214e924c49f5f97a3e02420528e9936c99c 100644
+--- a/deploy/berry-shell-bar/launcher.c
++++ b/deploy/berry-shell-bar/launcher.c
+@@ -647,6 +647,8 @@ int main(int argc, char** argv) {
+   /* Ship the previous session's log tail (crash backtraces included) to the
+    * configured endpoint. Forked; never blocks boot. */
+   berry_ship_log(112);
++  if (marker_exists("berry-ime.debug"))
++    setenv("BERRY_IME_DIAGNOSTICS", "1", 1);
+ 
+   fprintf(stderr, "BerryShell: app dir = %s\n", dir);
+   fprintf(stderr, "BerryShell: work dir (cwd) = %s\n", work);
+@@ -672,6 +674,15 @@ int main(int argc, char** argv) {
+       setenv("QNX_CA_BUNDLE", ca, 1);
+   }
+ 
++  /* Keep only font files in the directory scanned by Skia. */
++  {
++    char fonts[2200];
++    int length = snprintf(fonts, sizeof(fonts), "%s/fonts", dir);
++    if (length > 0 && (size_t)length < sizeof(fonts) &&
++        access(fonts, R_OK | X_OK) == 0)
++      setenv("QNX_FONT_DIR", fonts, 1);
++  }
++
+   /* Device panel + orientation (Settings > Device, or berry-device marker). */
+   int output_w = 1440, output_h = 1440, rotation = 90;
+   int base_render_w = 720, base_render_h = 720;
+@@ -689,6 +700,16 @@ int main(int argc, char** argv) {
+                        &use_fps_limit_flag, profile_name, sizeof(profile_name),
+                        base_render_w, base_render_h);
+ 
++  /* The Passport 720 tier draws more pixels at the same effective
++   * web viewport width as its default 540 tier. Keep QNX geometry in pixels. */
++  if (output_w == 1440 && output_h == 1440 &&
++      render_w == 720 && render_h == 720 &&
++      marker_exists("berry-x-720.enable")) {
++    setenv("BERRY_PASSPORT_720_PAGE_ZOOM", "1", 1);
++  } else {
++    unsetenv("BERRY_PASSPORT_720_PAGE_ZOOM");
++  }
++
+   {
+     char dim[16];
+     char rot[16];
+diff --git a/deploy/build-v3-bar.sh b/deploy/build-v3-bar.sh
+index 1204e7667e390f5c164abc3523d3ef80edf2bb7f..bb5cba6ee22c08554e0f9a5e86d55eabbc4ec789 100755
+--- a/deploy/build-v3-bar.sh
++++ b/deploy/build-v3-bar.sh
+@@ -57,6 +57,10 @@ echo "=== compile launcher (QNX ARM) ==="
+   -L"$QNX800/arm-blackberry-qnx8eabi/usr/lib" -lscreen -lsocket
+ file "$BAR_DIR/launcher"
+ 
++echo "=== compile BB10 input method helper ==="
++"$GCC" -std=c11 -D_QNX_SOURCE -O2 -Wall -Wextra \
++  -o "$BAR_DIR/payload/berry_ime_helper" "$BAR_DIR/berry_ime_helper.c" -lsocket
++
+ echo "=== package $BAR_OUT ==="
+ source "$BBNDK_ENV" >/dev/null 2>&1 || true
+ ( cd "$BAR_DIR" && blackberry-nativepackager -package "$BAR_NAME" "$DESC" )
+diff --git a/gpu/ipc/service/gpu_init.cc b/gpu/ipc/service/gpu_init.cc
+index 08b5229fd64080ab0d40b76f1ebc964f56cf4dba..5fdb7d80cd3033d1fdd15caa774af18e6c841927 100644
+--- a/gpu/ipc/service/gpu_init.cc
++++ b/gpu/ipc/service/gpu_init.cc
+@@ -51,7 +51,9 @@
+ #endif
+ 
+ #if BUILDFLAG(IS_OZONE)
++#if BUILDFLAG(ENABLE_VULKAN)
+ #include "gpu/vulkan/drm_modifiers_filter_vulkan.h"
++#endif
+ #include "ui/ozone/public/drm_modifiers_filter.h"
+ #include "ui/ozone/public/ozone_platform.h"
+ #include "ui/ozone/public/surface_factory_ozone.h"
+diff --git a/gpu/ipc/service/gpu_memory_buffer_factory_native_pixmap.h b/gpu/ipc/service/gpu_memory_buffer_factory_native_pixmap.h
+index 9e9d71908cb7fb95f4c592954d8f61250a6d5350..8e68b33535fad86411004dad322e17dd85f2d322 100644
+--- a/gpu/ipc/service/gpu_memory_buffer_factory_native_pixmap.h
++++ b/gpu/ipc/service/gpu_memory_buffer_factory_native_pixmap.h
+@@ -5,8 +5,6 @@
+ #ifndef GPU_IPC_SERVICE_GPU_MEMORY_BUFFER_FACTORY_NATIVE_PIXMAP_H_
+ #define GPU_IPC_SERVICE_GPU_MEMORY_BUFFER_FACTORY_NATIVE_PIXMAP_H_
+ 
+-#include <vulkan/vulkan_core.h>
+-
+ #include <unordered_map>
+ #include <utility>
+ 
+diff --git a/net/features.gni b/net/features.gni
+index 8027cbae175e8c74f0cabd2fda6da864fe8026cf..b9e0caf319e49c4b215ea4a8039a1304017d265d 100644
+--- a/net/features.gni
++++ b/net/features.gni
+@@ -18,7 +18,8 @@ declare_args() {
+   # and Chromecast, at least for now. This feature needs configuration
+   # (krb5.conf and so on).
+   # TODO(fuchsia): Enable kerberos on Fuchsia when it's implemented there.
+-  use_kerberos = !is_ios && !is_fuchsia && !is_castos && !is_cast_android
++  use_kerberos =
++      !is_ios && !is_fuchsia && !is_castos && !is_cast_android && !is_qnx
+ 
+   # Do not disable brotli filter by default.
+   disable_brotli_filter = false
+diff --git a/services/tracing/public/cpp/perfetto/perfetto_traced_process.cc b/services/tracing/public/cpp/perfetto/perfetto_traced_process.cc
+index 8e13f23056281942b47a078743be243a32b36e14..30752124b3cc33d90ef1f5edbb635829a9d7a614 100644
+--- a/services/tracing/public/cpp/perfetto/perfetto_traced_process.cc
++++ b/services/tracing/public/cpp/perfetto/perfetto_traced_process.cc
+@@ -25,7 +25,7 @@
+ #include "services/tracing/public/mojom/tracing_service.mojom.h"
+ #include "third_party/perfetto/include/perfetto/tracing/tracing.h"
+ 
+-#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
++#if (BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_QNX)) || BUILDFLAG(IS_FUCHSIA)
+ // As per 'gn help check':
+ /*
+   If you have conditional includes, make sure the build conditions and the
+@@ -40,7 +40,7 @@
+ 
+ namespace tracing {
+ namespace {
+-#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
++#if (BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_QNX)) || BUILDFLAG(IS_FUCHSIA)
+ // Set to use the dummy producer for Chrome OS browser_tests and
+ // content_browsertests to keep the system producer from causing flakes.
+ static bool g_system_producer_enabled = true;
+@@ -49,7 +49,7 @@ static bool g_system_producer_enabled = true;
+ std::unique_ptr<SystemProducer> NewSystemProducer(
+     base::tracing::PerfettoTaskRunner* runner,
+     const char* socket_name) {
+-#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
++#if (BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_QNX)) || BUILDFLAG(IS_FUCHSIA)
+   DCHECK(socket_name);
+   if (g_system_producer_enabled)
+     return std::make_unique<PosixSystemProducer>(socket_name, runner);
+@@ -58,7 +58,7 @@ std::unique_ptr<SystemProducer> NewSystemProducer(
+ }
+ 
+ const char* MaybeSocket() {
+-#if BUILDFLAG(IS_POSIX)
++#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_QNX)
+   return perfetto::GetProducerSocket();
+ #elif BUILDFLAG(IS_FUCHSIA)
+   // The socket is connected via a socket pair passed over IPC, which is not
+@@ -310,7 +310,7 @@ void PerfettoTracedProcess::SetupClientLibrary(bool enable_consumer) {
+   init_args.shmem_direct_patching_enabled = true;
+   init_args.use_monotonic_clock = true;
+   init_args.disallow_merging_with_system_tracks = true;
+-#if BUILDFLAG(IS_POSIX)
++#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_QNX)
+   // In non-SDK build we only use the client library system backend for the
+   // consumer side, which is only allowed in the browser process.
+   // In SDK build we use system backend for producers too, but note that
+@@ -420,7 +420,7 @@ void PerfettoTracedProcess::ShouldAllowSystemConsumerSession(
+ }
+ 
+ void PerfettoTracedProcess::SetSystemProducerEnabledForTesting(bool enabled) {
+-#if BUILDFLAG(IS_POSIX)
++#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_QNX)
+   // If set to disabled, use the dummy implementation to prevent the real system
+   // producer from interfering with browser tests.
+   g_system_producer_enabled = enabled;
+diff --git a/services/tracing/public/cpp/system_tracing_service.cc b/services/tracing/public/cpp/system_tracing_service.cc
+index 2f90cf4aa0ecac83c3a9100063206d0fb57a0237..947c3b314aa0d9aaffef16a26aabc0de577c1542 100644
+--- a/services/tracing/public/cpp/system_tracing_service.cc
++++ b/services/tracing/public/cpp/system_tracing_service.cc
+@@ -21,6 +21,7 @@
+ 
+ namespace tracing {
+ 
++#if !BUILDFLAG(IS_QNX)
+ using ::perfetto::base::UnixSocket;
+ 
+ namespace {
+@@ -118,6 +119,7 @@ class UnixSocketEventListener : public UnixSocket::EventListener {
+ };
+ 
+ }  // Anonymous namespace
++#endif
+ 
+ SystemTracingService::SystemTracingService() = default;
+ SystemTracingService::~SystemTracingService() = default;
+@@ -137,19 +139,28 @@ void SystemTracingService::OnConnectionError() {
+ 
+ void SystemTracingService::OpenProducerSocket(
+     OpenProducerSocketCallback callback) {
++#if BUILDFLAG(IS_QNX)
++  std::move(callback).Run(base::File());
++#else
+   auto* connect_listener = new UnixSocketEventListener(std::move(callback));
+   connect_listener->Connect();
+   // |connect_listener| will self-destroy on connection successful.
++#endif
+ }
+ 
+ void SystemTracingService::OpenProducerSocketForTesting(
+     OpenProducerSocketCallback callback,
+     OnConnectCallback on_connect_callback) {
++#if BUILDFLAG(IS_QNX)
++  std::move(on_connect_callback).Run(false);
++  std::move(callback).Run(base::File());
++#else
+   auto* connect_listener = new UnixSocketEventListener(std::move(callback));
+   connect_listener->SetOnConnectCallbackForTesting(  // IN-TEST
+       std::move(on_connect_callback));
+   connect_listener->Connect();
+   // |connect_listener| will self-destroy on connection successful.
++#endif
+ }
+ 
+ }  // namespace tracing
+diff --git a/third_party/blink/renderer/core/layout/ng/physical_fragment_rare_data.h b/third_party/blink/renderer/core/layout/ng/physical_fragment_rare_data.h
+index c03a841af5f07f74c9dc6a8a4d18f7b5cb069bc1..8e2c72b945244d402a49bf0bd6c4bde4118b0541 100644
+--- a/third_party/blink/renderer/core/layout/ng/physical_fragment_rare_data.h
++++ b/third_party/blink/renderer/core/layout/ng/physical_fragment_rare_data.h
+@@ -113,7 +113,7 @@ class PhysicalFragmentRareData
+ 
+   ALWAYS_INLINE wtf_size_t GetFieldIndex(FieldId field_id) const {
+     DCHECK(bit_field_ & FieldIdBit(field_id));
+-    return std::popcount(bit_field_ & FieldIdLowerMask(field_id));
++    return __builtin_popcount(bit_field_ & FieldIdLowerMask(field_id));
+   }
+ 
+   ALWAYS_INLINE const RareField* GetField(FieldId field_id) const {
+diff --git a/third_party/zlib/cpu_features.c b/third_party/zlib/cpu_features.c
+index 2d558ac6fa87278eafaa20e5c68c5d6d12b52e1b..a26b43a072d4a7bd4d4f8edecd1ff12d20c5448a 100644
+--- a/third_party/zlib/cpu_features.c
++++ b/third_party/zlib/cpu_features.c
+@@ -41,7 +41,7 @@ int ZLIB_INTERNAL x86_cpu_enable_avx512 = 0;
+ 
+ #if defined(ARMV8_OS_ANDROID)
+ #include <cpu-features.h>
+-#elif defined(ARMV8_OS_LINUX)
++#elif defined(ARMV8_OS_LINUX) && !defined(__QNX__)
+ #include <asm/hwcap.h>
+ #include <sys/auxv.h>
+ #elif defined(ARMV8_OS_FUCHSIA)
+diff --git a/ui/base/interaction/interactive_test.h b/ui/base/interaction/interactive_test.h
+index 81298c9f9cfd011c2167bc4540ed4f6d6fdaf12b..93aba5122d1aa7855b1466717c96997f1a5a84fd 100644
+--- a/ui/base/interaction/interactive_test.h
++++ b/ui/base/interaction/interactive_test.h
+@@ -901,7 +901,7 @@ InteractionSequence::StepBuilder InteractiveTestApi::ObserveState(
+       internal::kInteractiveTestPivotElementId,
+       base::BindOnce(
+           [](InteractiveTestApi* api, ElementIdentifier id,
+-             std::remove_cvref_t<Args>... args, TrackedElement* el) {
++             base::remove_cvref_t<Args>... args, TrackedElement* el) {
+             return api->private_test_impl().AddStateObserver(
+                 id, el->context(),
+                 std::make_unique<Observer>(
+@@ -1034,7 +1034,7 @@ InteractiveTestApi::StepBuilder InteractiveTestApi::StopObservingState(
+ template <typename... Args>
+ InteractiveTestApi::StepBuilder InteractiveTestApi::Log(Args... args) {
+   auto step = Do(base::BindOnce(
+-      [](std::remove_cvref_t<Args>... args) {
++      [](base::remove_cvref_t<Args>... args) {
+         auto info = COMPACT_GOOGLE_LOG_INFO;
+         ((info.stream() << INTERACTIVE_TEST_UNWRAP_IMPL(args, Args)), ...);
+       },
+diff --git a/ui/base/interaction/interactive_test_internal.h b/ui/base/interaction/interactive_test_internal.h
+index e40f73df0d21cace29f76144c0c66ede5203e81b..18925b89767dfa9023a137eb6035087bdd3884da 100644
+--- a/ui/base/interaction/interactive_test_internal.h
++++ b/ui/base/interaction/interactive_test_internal.h
+@@ -296,7 +296,7 @@ class StateObserverElementT : public StateObserverElement {
+ //
+ // Steps which use this method will fail if it returns false, printing out the
+ // details of the step in the usual way.
+-template <typename T, typename V = std::remove_cvref_t<T>>
++template <typename T, typename V = base::remove_cvref_t<T>>
+ bool MatchAndExplain(const base::StringPiece& test_name,
+                      const testing::Matcher<V>& matcher,
+                      const T& value) {
+@@ -474,7 +474,7 @@ template <typename F>
+ base::RepeatingCallback<typename MaybeBindTypeHelper<F>::Signature>
+ MaybeBindRepeating(F&& function) {
+   if constexpr (IsCallableValue<F> && std::is_empty_v<F> &&
+-                std::is_copy_constructible_v<std::remove_cvref_t<F>>) {
++                std::is_copy_constructible_v<base::remove_cvref_t<F>>) {
+     return base::BindRepeating(std::forward<F>(function));
+   } else {
+     return MaybeBindHelper<F>::MaybeBind(std::forward<F>(function));
+diff --git a/ui/ozone/platform/qnx_screen/BUILD.gn b/ui/ozone/platform/qnx_screen/BUILD.gn
+index 8c2de24b277eb311ca8c3a1c8baa150dae53604b..5fb9e0a6235d57a8921388c31190ee836ff7a0fb 100644
+--- a/ui/ozone/platform/qnx_screen/BUILD.gn
++++ b/ui/ozone/platform/qnx_screen/BUILD.gn
+@@ -15,6 +15,8 @@ source_set("qnx_screen") {
+     "ozone_platform_qnx_screen.h",
+     "qnx_input_method.cc",
+     "qnx_input_method.h",
++    "qnx_system_input.cc",
++    "qnx_system_input.h",
+     "qnx_virtual_keyboard_controller.cc",
+     "qnx_virtual_keyboard_controller.h",
+     "qnx_screen_event_source.cc",
+diff --git a/ui/ozone/platform/qnx_screen/qnx_input_method.cc b/ui/ozone/platform/qnx_screen/qnx_input_method.cc
+index 94e9b34c90ac91c22fe4d6f3f4c17f47d065a016..26f4207eaec5acfc6486417b9e124e46568f81b5 100644
+--- a/ui/ozone/platform/qnx_screen/qnx_input_method.cc
++++ b/ui/ozone/platform/qnx_screen/qnx_input_method.cc
+@@ -3,8 +3,16 @@
+ #include "ui/ozone/platform/qnx_screen/qnx_input_method.h"
+ 
+ #include <stdint.h>
++#include <string.h>
++
++#include <algorithm>
++
++#include "base/functional/bind.h"
++#include "base/strings/utf_string_conversions.h"
++#include "ui/base/ime/composition_text.h"
+ 
+ #include "ui/base/ime/text_input_client.h"
++#include "ui/base/ime/text_input_flags.h"
+ #include "ui/events/event.h"
+ #include "ui/events/types/event_type.h"
+ #include "ui/ozone/platform/qnx_screen/qnx_virtual_keyboard_controller.h"
+@@ -12,17 +20,42 @@
+ namespace ui {
+ 
+ QnxInputMethod::QnxInputMethod(ImeKeyEventDispatcher* ime_key_event_dispatcher)
+-    : InputMethodBase(
+-          ime_key_event_dispatcher,
+-          std::make_unique<QnxVirtualKeyboardController>(this)) {}
++    : InputMethodBase(ime_key_event_dispatcher,
++                      std::make_unique<QnxVirtualKeyboardController>(this)),
++      system_input_(base::BindRepeating(&QnxInputMethod::ApplySystemEdit,
++                                        base::Unretained(this)),
++                    base::BindRepeating(&QnxInputMethod::ForwardSystemKey,
++                                        base::Unretained(this))) {}
+ 
+ QnxInputMethod::~QnxInputMethod() = default;
+ 
+ ui::EventDispatchDetails QnxInputMethod::DispatchKeyEvent(ui::KeyEvent* event) {
+   DCHECK(event->type() == ET_KEY_PRESSED || event->type() == ET_KEY_RELEASED);
+ 
+-  if (!GetTextInputClient())
++  if (GetTextInputType() != TEXT_INPUT_TYPE_NONE &&
++      !(event->flags() & (EF_CONTROL_DOWN | EF_COMMAND_DOWN))) {
++    if (const auto* properties = event->properties()) {
++      const auto it = properties->find(kQnxRawKeyProperty);
++      if (it != properties->end() && it->second.size() == sizeof(QnxRawKey)) {
++        QnxRawKey raw;
++        memcpy(&raw, it->second.data(), sizeof(raw));
++        UpdateSystemFocus();
++        if (system_input_.DispatchKey(raw, event->type() == ET_KEY_PRESSED)) {
++          event->StopPropagation();
++          return {};
++        }
++      }
++    }
++  }
++  TraceQnxIme("page-fallback-key", event->type() == ET_KEY_PRESSED);
++  return DispatchWithoutSystemIme(event);
++}
++
++ui::EventDispatchDetails QnxInputMethod::DispatchWithoutSystemIme(
++    ui::KeyEvent* event) {
++  if (!GetTextInputClient()) {
+     return DispatchKeyEventPostIME(event);
++  }
+ 
+   ui::EventDispatchDetails dispatch_details = DispatchKeyEventPostIME(event);
+   if (!event->stopped_propagation() && !dispatch_details.dispatcher_destroyed &&
+@@ -36,9 +69,149 @@ ui::EventDispatchDetails QnxInputMethod::DispatchKeyEvent(ui::KeyEvent* event) {
+   return dispatch_details;
+ }
+ 
+-void QnxInputMethod::OnCaretBoundsChanged(const TextInputClient* client) {}
++void QnxInputMethod::OnFocus() {
++  InputMethodBase::OnFocus();
++  UpdateSystemFocus();
++}
++
++void QnxInputMethod::OnBlur() {
++  system_input_.Blur();
++  InputMethodBase::OnBlur();
++}
+ 
+-void QnxInputMethod::CancelComposition(const TextInputClient* client) {}
++void QnxInputMethod::UpdateSystemFocus() {
++  const auto type = GetTextInputType();
++  const auto* client = GetTextInputClient();
++  const bool sensitive = type == TEXT_INPUT_TYPE_PASSWORD ||
++                         (client && (client->GetTextInputFlags() &
++                                     TEXT_INPUT_FLAG_HAS_BEEN_PASSWORD));
++  if (type != system_input_type_ || type == TEXT_INPUT_TYPE_NONE || sensitive) {
++    system_input_.Blur();
++  }
++  system_input_type_ = type;
++  if (type != TEXT_INPUT_TYPE_NONE && !sensitive && system_input_.Focus()) {
++    OnCaretBoundsChanged(GetTextInputClient());
++  }
++}
++
++void QnxInputMethod::OnCaretBoundsChanged(const TextInputClient* client) {
++  if (!client || client != GetTextInputClient()) {
++    return;
++  }
++  NotifyTextInputCaretBoundsChanged(client);
++  gfx::Range range;
++  gfx::Range selection;
++  std::u16string text;
++  if (!GetTextInputClient()->ShouldDoLearning() || !client->GetTextRange(&range) ||
++      !client->GetEditableSelectionRange(&selection) ||
++      !range.Contains(selection) || !client->GetTextFromRange(range, &text)) {
++    system_input_.SetSurroundingText({}, 0, 0);
++    return;
++  }
++  system_input_.SetSurroundingText(std::move(text),
++                                   selection.start() - range.start(),
++                                   selection.end() - range.start());
++}
++
++void QnxInputMethod::CancelComposition(const TextInputClient* client) {
++  if (client && client == GetTextInputClient()) {
++    system_input_.CancelComposition();
++  }
++}
++
++void QnxInputMethod::ApplySystemEdit(QnxSystemInput::Edit edit,
++                                     std::u16string text,
++                                     int first,
++                                     int second) {
++  auto* client = GetTextInputClient();
++  if (!client || IsTextInputTypeNone()) {
++    return;
++  }
++  switch (edit) {
++    case QnxSystemInput::Edit::kCommit:
++      client->InsertText(
++          text,
++          first > 0
++              ? TextInputClient::InsertTextCursorBehavior::kMoveCursorAfterText
++              : TextInputClient::InsertTextCursorBehavior::
++                    kMoveCursorBeforeText);
++      break;
++    case QnxSystemInput::Edit::kCompose: {
++      if (text.empty()) {
++        client->ClearCompositionText();
++        break;
++      }
++      CompositionText composition;
++      composition.text = std::move(text);
++      const auto wide = base::UTF16ToWide(composition.text);
++      const int offset =
++          first > 0 ? static_cast<int>(wide.size()) + first - 1 : first;
++      const size_t cursor =
++          base::WideToUTF16(
++              std::wstring_view(wide).substr(
++                  0, std::clamp(offset, 0, static_cast<int>(wide.size()))))
++              .size();
++      composition.selection = gfx::Range(cursor);
++      composition.ime_text_spans.emplace_back(
++          ImeTextSpan::Type::kComposition, 0, composition.text.size());
++      client->SetCompositionText(composition);
++      break;
++    }
++    case QnxSystemInput::Edit::kFinish:
++      if (client->HasCompositionText()) {
++        client->ConfirmCompositionText(/*keep_selection=*/false);
++      }
++      break;
++    case QnxSystemInput::Edit::kDelete:
++      if (first >= 0 && second >= 0) {
++        client->ExtendSelectionAndDelete(first, second);
++      }
++      break;
++    case QnxSystemInput::Edit::kSelect:
++    case QnxSystemInput::Edit::kComposeRegion: {
++      gfx::Range range;
++      std::u16string field;
++      if (first < 0 || second < 0 || !client->ShouldDoLearning() ||
++          !client->GetTextRange(&range) ||
++          !client->GetTextFromRange(range, &field)) {
++        break;
++      }
++      const auto wide = base::UTF16ToWide(field);
++      if (static_cast<size_t>(std::max(first, second)) > wide.size()) {
++        break;
++      }
++      const auto offset = [&](size_t index) {
++        return range.start() +
++               base::WideToUTF16(std::wstring_view(wide).substr(0, index))
++                   .size();
++      };
++      const gfx::Range requested(offset(first), offset(second));
++      if (edit == QnxSystemInput::Edit::kSelect) {
++        client->SetEditableSelectionRange(requested);
++      } else if (!requested.is_reversed() && !requested.is_empty()) {
++        CompositionText composition;
++        if (client->GetTextFromRange(requested, &composition.text) &&
++            client->SetEditableSelectionRange(requested)) {
++          composition.selection = gfx::Range(composition.text.size());
++          composition.ime_text_spans.emplace_back(
++              ImeTextSpan::Type::kComposition, 0, composition.text.size());
++          client->SetCompositionText(composition);
++        }
++      }
++      break;
++    }
++  }
++}
++
++void QnxInputMethod::ForwardSystemKey(int code,
++                                      int character,
++                                      int modifiers,
++                                      bool pressed) {
++  auto event = MakeQnxForwardedKey({code, character, modifiers}, pressed);
++  if (event) {
++    DispatchWithoutSystemIme(event.get());
++  }
++}
+ 
+ bool QnxInputMethod::IsCandidatePopupOpen() const {
+   return false;
+@@ -46,32 +219,40 @@ bool QnxInputMethod::IsCandidatePopupOpen() const {
+ 
+ void QnxInputMethod::OnTextInputTypeChanged(TextInputClient* client) {
+   InputMethodBase::OnTextInputTypeChanged(client);
+-  if (!IsTextInputClientFocused(client))
++  if (!IsTextInputClientFocused(client)) {
+     return;
++  }
+ 
++  UpdateSystemFocus();
+   auto* vk = GetVirtualKeyboardController();
+-  if (!vk)
++  if (!vk) {
+     return;
++  }
+ 
+   if (IsTextInputTypeNone()) {
+     vk->DismissVirtualKeyboard();
+     return;
+   }
+ 
+-  if (vk->IsKeyboardVisible())
++  if (vk->IsKeyboardVisible()) {
+     vk->DisplayVirtualKeyboard();
++  }
+ }
+ 
+ void QnxInputMethod::OnDidChangeFocusedClient(TextInputClient* focused_before,
+-                                                TextInputClient* focused) {
++                                              TextInputClient* focused) {
+   InputMethodBase::OnDidChangeFocusedClient(focused_before, focused);
++  system_input_.Blur();
++  UpdateSystemFocus();
+ 
+   auto* vk = GetVirtualKeyboardController();
+-  if (!vk)
++  if (!vk) {
+     return;
++  }
+ 
+-  if (!focused || IsTextInputTypeNone())
++  if (!focused || IsTextInputTypeNone()) {
+     vk->DismissVirtualKeyboard();
++  }
+ }
+ 
+ }  // namespace ui
+diff --git a/ui/ozone/platform/qnx_screen/qnx_input_method.h b/ui/ozone/platform/qnx_screen/qnx_input_method.h
+index e12792db1bb8c27b80413ce8266a4de5c5899934..ae260c438796ff8dd23aba7d44c508996f001a6f 100644
+--- a/ui/ozone/platform/qnx_screen/qnx_input_method.h
++++ b/ui/ozone/platform/qnx_screen/qnx_input_method.h
+@@ -5,6 +5,7 @@
+ #define UI_OZONE_PLATFORM_QNX_SCREEN_QNX_INPUT_METHOD_H_
+ 
+ #include "ui/base/ime/input_method_base.h"
++#include "ui/ozone/platform/qnx_screen/qnx_system_input.h"
+ 
+ namespace ui {
+ 
+@@ -20,6 +21,8 @@ class QnxInputMethod : public InputMethodBase {
+   ~QnxInputMethod() override;
+ 
+   ui::EventDispatchDetails DispatchKeyEvent(ui::KeyEvent* event) override;
++  void OnFocus() override;
++  void OnBlur() override;
+   void OnCaretBoundsChanged(const TextInputClient* client) override;
+   void CancelComposition(const TextInputClient* client) override;
+   bool IsCandidatePopupOpen() const override;
+@@ -28,6 +31,17 @@ class QnxInputMethod : public InputMethodBase {
+  protected:
+   void OnDidChangeFocusedClient(TextInputClient* focused_before,
+                                 TextInputClient* focused) override;
++
++ private:
++  void UpdateSystemFocus();
++  void ApplySystemEdit(QnxSystemInput::Edit edit,
++                       std::u16string text,
++                       int first,
++                       int second);
++  void ForwardSystemKey(int code, int character, int modifiers, bool pressed);
++  ui::EventDispatchDetails DispatchWithoutSystemIme(ui::KeyEvent* event);
++  QnxSystemInput system_input_;
++  TextInputType system_input_type_ = TEXT_INPUT_TYPE_NONE;
+ };
+ 
+ }  // namespace ui
+diff --git a/ui/ozone/platform/qnx_screen/qnx_screen_event_source.cc b/ui/ozone/platform/qnx_screen/qnx_screen_event_source.cc
+index 1095d9c754e0cea06dba5658152822cc9eb4a3c9..363379ff7821f418d1b0eb553271cb4435c9e762 100644
+--- a/ui/ozone/platform/qnx_screen/qnx_screen_event_source.cc
++++ b/ui/ozone/platform/qnx_screen/qnx_screen_event_source.cc
+@@ -1,4 +1,6 @@
+ #include "ui/ozone/platform/qnx_screen/qnx_screen_event_source.h"
++
++#include <string.h>
+ #include <bps/bps.h>
+ #include <bps/event.h>
+ #include <bps/navigator.h>
+@@ -26,6 +28,7 @@
+ #include "ui/ozone/platform/qnx_screen/qnx_screen_repaint.h"
+ #include "ui/ozone/platform/qnx_screen/qnx_screen_window.h"
+ #include "ui/ozone/platform/qnx_screen/qnx_screen_window_manager.h"
++#include "ui/ozone/platform/qnx_screen/qnx_system_input.h"
+ #include "ui/ozone/platform/qnx_screen/qnx_virtual_keyboard_controller.h"
+ #include "third_party/skia/include/core/SkCanvas.h"
+ #include "third_party/skia/include/core/SkSurface.h"
+@@ -381,20 +384,37 @@ int QnxAltLayerSym(int sym) {
+ 
+ }  // namespace
+ 
++std::unique_ptr<KeyEvent> MakeQnxForwardedKey(QnxRawKey raw, bool pressed) {
++  QnxKeyMap mapped = MapQnxKey(raw.character ? raw.character : raw.code);
++  if (!mapped.valid)
++    mapped = MapQnxKey(raw.code);
++  if (!mapped.valid)
++    return nullptr;
++  int flags = EF_NONE;
++  if (raw.modifiers & KEYMOD_SHIFT)
++    flags |= EF_SHIFT_DOWN;
++  if (raw.modifiers & KEYMOD_CTRL)
++    flags |= EF_CONTROL_DOWN;
++  if ((raw.modifiers & KEYMOD_ALT) && !mapped.dom_key.IsCharacter())
++    flags |= EF_ALT_DOWN;
++  return std::make_unique<KeyEvent>(
++      pressed ? ET_KEY_PRESSED : ET_KEY_RELEASED, mapped.key_code,
++      mapped.dom_code, flags, mapped.dom_key, base::TimeTicks::Now());
++}
++
+ void QnxScreenEventSource::ProcessKeyboardEvent(screen_event_t ev) {
+   base::MarkQnxProcessPumpActive();
+   int kflags = 0;
+   screen_get_event_property_iv(ev, SCREEN_PROPERTY_KEY_FLAGS, &kflags);
+   int sym = 0;
+   screen_get_event_property_iv(ev, SCREEN_PROPERTY_KEY_SYM, &sym);
++  int cap = 0;
++  screen_get_event_property_iv(ev, SCREEN_PROPERTY_KEY_CAP, &cap);
+   int mods = 0;
+   screen_get_event_property_iv(ev, SCREEN_PROPERTY_KEY_MODIFIERS, &mods);
+ 
+   bool down = (kflags & SCREEN_FLAG_KEY_DOWN) != 0;
+-
+-  auto key_cb = GetQnxScreenKeyCallback();
+-  if (key_cb && key_cb(sym, down))
+-    return;
++  TraceQnxIme("screen-key", down);
+ 
+   // Touch keyboard: tap Shift then a letter often arrives without KEYMOD_SHIFT.
+   if (sym == KEYCODE_LEFT_SHIFT || sym == KEYCODE_RIGHT_SHIFT) {
+@@ -418,6 +438,16 @@ void QnxScreenEventSource::ProcessKeyboardEvent(screen_event_t ev) {
+   if (effective_sym == sym && shift_effective && sym >= 'a' && sym <= 'z')
+     effective_sym = sym - 'a' + 'A';
+ 
++  long long timestamp = 0;
++  screen_get_event_property_llv(ev, SCREEN_PROPERTY_TIMESTAMP, &timestamp);
++  const QnxRawKey raw{cap ? cap : sym, effective_sym, mods,
++                      static_cast<uint64_t>(timestamp)};
++  if (auto key_cb = GetQnxScreenKeyCallback(); key_cb && key_cb(raw, down)) {
++    if (down && sym >= 'a' && sym <= 'z' && shift_effective)
++      shift_latched_ = false;
++    return;
++  }
++
+   QnxKeyMap m = MapQnxKey(effective_sym);
+   if (m.valid) {
+     if (m.dom_code == DomCode::NONE) {
+@@ -457,6 +487,9 @@ void QnxScreenEventSource::ProcessKeyboardEvent(screen_event_t ev) {
+   EventType et = down ? ET_KEY_PRESSED : ET_KEY_RELEASED;
+   KeyEvent key(et, m.key_code, m.dom_code, flags, m.dom_key,
+                base::TimeTicks::Now());
++  std::vector<uint8_t> bytes(sizeof(raw));
++  memcpy(bytes.data(), &raw, bytes.size());
++  key.SetProperties({{kQnxRawKeyProperty, std::move(bytes)}});
+   DispatchEvent(&key);
+ }
+ 
+diff --git a/ui/ozone/platform/qnx_screen/qnx_screen_input_callback.h b/ui/ozone/platform/qnx_screen/qnx_screen_input_callback.h
+index 52e8a2a71bc7f8f5c1d40d4d66dee6bc98e4e983..f54258e43aa5a7b0384dd59653d60b8afe782597 100644
+--- a/ui/ozone/platform/qnx_screen/qnx_screen_input_callback.h
++++ b/ui/ozone/platform/qnx_screen/qnx_screen_input_callback.h
+@@ -10,7 +10,8 @@ namespace ui {
+ using QnxScreenTouchCallback = bool (*)(int type, int x, int y);
+ // type: 0=press, 1=move, 2=release
+ 
+-using QnxScreenKeyCallback = bool (*)(int key_sym, bool press);
++struct QnxRawKey;
++using QnxScreenKeyCallback = bool (*)(const QnxRawKey& key, bool press);
+ 
+ void SetQnxScreenTouchCallback(QnxScreenTouchCallback cb);
+ QnxScreenTouchCallback GetQnxScreenTouchCallback();
+diff --git a/ui/ozone/platform/qnx_screen/qnx_virtual_keyboard_controller.cc b/ui/ozone/platform/qnx_screen/qnx_virtual_keyboard_controller.cc
+index a7fc0b1c51f01a845b6d6a0bcaaea6feb67517a5..41e39404f78b3d40bedc1525def512a2355168a7 100644
+--- a/ui/ozone/platform/qnx_screen/qnx_virtual_keyboard_controller.cc
++++ b/ui/ozone/platform/qnx_screen/qnx_virtual_keyboard_controller.cc
+@@ -39,7 +39,7 @@ static void QnxVkLogf(const char* fmt, ...) {
+ 
+ static virtualkeyboard_layout_t MapLayout(TextInputClient* client) {
+   if (!client)
+-    return VIRTUALKEYBOARD_LAYOUT_WEB;
++    return VIRTUALKEYBOARD_LAYOUT_DEFAULT;
+ 
+   switch (client->GetTextInputMode()) {
+     case TEXT_INPUT_MODE_URL:
+@@ -53,7 +53,7 @@ static virtualkeyboard_layout_t MapLayout(TextInputClient* client) {
+       return VIRTUALKEYBOARD_LAYOUT_NUMBER;
+     case TEXT_INPUT_MODE_SEARCH:
+     case TEXT_INPUT_MODE_TEXT:
+-      return VIRTUALKEYBOARD_LAYOUT_WEB;
++      return VIRTUALKEYBOARD_LAYOUT_DEFAULT;
+     case TEXT_INPUT_MODE_NONE:
+     case TEXT_INPUT_MODE_DEFAULT:
+       break;
+@@ -71,9 +71,9 @@ static virtualkeyboard_layout_t MapLayout(TextInputClient* client) {
+     case TEXT_INPUT_TYPE_TELEPHONE:
+       return VIRTUALKEYBOARD_LAYOUT_PHONE;
+     case TEXT_INPUT_TYPE_SEARCH:
+-      return VIRTUALKEYBOARD_LAYOUT_WEB;
++      return VIRTUALKEYBOARD_LAYOUT_DEFAULT;
+     default:
+-      return VIRTUALKEYBOARD_LAYOUT_WEB;
++      return VIRTUALKEYBOARD_LAYOUT_DEFAULT;
+   }
+ }
+ 

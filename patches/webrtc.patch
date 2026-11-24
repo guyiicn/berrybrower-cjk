@@ -1,0 +1,185 @@
+diff --git a/common_audio/smoothing_filter.cc b/common_audio/smoothing_filter.cc
+index eaaf3a003377e5efe3ecf222033e65cd53e2a1e8..b371f4b0674f6202dcbc8260faac43a96dee1152 100644
+--- a/common_audio/smoothing_filter.cc
++++ b/common_audio/smoothing_filter.cc
+@@ -95,7 +95,7 @@ void SmoothingFilterImpl::ExtrapolateLastSample(int64_t time_ms) {
+       multiplier = 0.0f;
+     } else if (init_time_ms_ == 1) {
+       // This means `init_factor_` = 1.
+-      multiplier = std::exp(last_state_time_ms_ - time_ms);
++      multiplier = std::exp(static_cast<double>(last_state_time_ms_ - time_ms));
+     } else {
+       multiplier = std::exp(
+           -(powf(init_factor_, last_state_time_ms_ - *init_end_time_ms_) -
+diff --git a/common_audio/third_party/spl_sqrt_floor/BUILD.gn b/common_audio/third_party/spl_sqrt_floor/BUILD.gn
+index ac862c65a893da719fa91b233563e97a38b74b0e..ac606e8ec2deed4efbf11da306dace2bf5ccdf64 100644
+--- a/common_audio/third_party/spl_sqrt_floor/BUILD.gn
++++ b/common_audio/third_party/spl_sqrt_floor/BUILD.gn
+@@ -14,6 +14,9 @@ rtc_library("spl_sqrt_floor") {
+   deps = []
+   if (current_cpu == "arm") {
+     sources += [ "spl_sqrt_floor_arm.S" ]
++    if (is_qnx) {
++      asmflags = [ "-D__QNXNTO__" ]
++    }
+ 
+     deps += [ "../../../rtc_base/system:asm_defines" ]
+   } else if (current_cpu == "mipsel") {
+diff --git a/modules/congestion_controller/goog_cc/loss_based_bwe_v2.cc b/modules/congestion_controller/goog_cc/loss_based_bwe_v2.cc
+index e26fcc6cb139c28195bf9fd813ea4294bcc896ec..db9f7988181f645d5f94d46aabf4fd6d144830c9 100644
+--- a/modules/congestion_controller/goog_cc/loss_based_bwe_v2.cc
++++ b/modules/congestion_controller/goog_cc/loss_based_bwe_v2.cc
+@@ -508,7 +508,7 @@ absl::optional<LossBasedBweV2::Config> LossBasedBweV2::CreateConfig(
+   if (!enabled.Get()) {
+     return config;
+   }
+-  config.emplace();
++  config.emplace(Config{});
+   config->bandwidth_rampup_upper_bound_factor =
+       bandwidth_rampup_upper_bound_factor.Get();
+   config->rampup_acceleration_max_factor = rampup_acceleration_max_factor.Get();
+diff --git a/modules/rtp_rtcp/source/rtp_header_extensions.cc b/modules/rtp_rtcp/source/rtp_header_extensions.cc
+index e42a84bd06c70e8b75ef66bf4f4b254a3a924cc9..460a99967db72012e15a6a5d4ec8b812a81ced11 100644
+--- a/modules/rtp_rtcp/source/rtp_header_extensions.cc
++++ b/modules/rtp_rtcp/source/rtp_header_extensions.cc
+@@ -12,6 +12,7 @@
+ 
+ #include <string.h>
+ 
++#include <algorithm>
+ #include <cmath>
+ #include <cstddef>
+ #include <cstdint>
+@@ -758,7 +759,8 @@ bool BaseRtpStringExtension::Parse(rtc::ArrayView<const uint8_t> data,
+   const char* cstr = reinterpret_cast<const char*>(data.data());
+   // If there is a \0 character in the middle of the `data`, treat it as end
+   // of the string. Well-formed string extensions shouldn't contain it.
+-  str->assign(cstr, strnlen(cstr, data.size()));
++  const auto end = std::find(data.begin(), data.end(), uint8_t{0});
++  str->assign(cstr, static_cast<size_t>(end - data.begin()));
+   RTC_DCHECK(!str->empty());
+   return true;
+ }
+diff --git a/modules/video_coding/codecs/av1/av1_svc_config.cc b/modules/video_coding/codecs/av1/av1_svc_config.cc
+index 09b840cb76ad9f3f86e408de8cda5def22735b97..b57cdc7acb81ed749904b90f7d2b3ccd0c2b48b7 100644
+--- a/modules/video_coding/codecs/av1/av1_svc_config.cc
++++ b/modules/video_coding/codecs/av1/av1_svc_config.cc
+@@ -133,7 +133,8 @@ bool SetAv1SvcConfig(VideoCodec& video_codec,
+   for (int sl_idx = 0; sl_idx < info.num_spatial_layers; ++sl_idx) {
+     SpatialLayer& spatial_layer = video_codec.spatialLayers[sl_idx];
+     const int num_pixels = spatial_layer.width * spatial_layer.height;
+-    int min_bitrate_kbps = (480.0 * std::sqrt(num_pixels) - 95'000.0) / 1000.0;
++    const double sqrt_pixels = std::sqrt(static_cast<double>(num_pixels));
++    int min_bitrate_kbps = (480.0 * sqrt_pixels - 95'000.0) / 1000.0;
+     spatial_layer.minBitrate = std::max(min_bitrate_kbps, 20);
+     spatial_layer.maxBitrate = 50 + static_cast<int>(1.6 * num_pixels / 1000.0);
+     spatial_layer.targetBitrate =
+diff --git a/modules/video_coding/codecs/vp9/svc_config.cc b/modules/video_coding/codecs/vp9/svc_config.cc
+index 7af8cab3cb03d6498d8629bf03ce17aa9d1eceb4..c04e9b061b60d6f68a3e705f1f8bb4d5017a2d58 100644
+--- a/modules/video_coding/codecs/vp9/svc_config.cc
++++ b/modules/video_coding/codecs/vp9/svc_config.cc
+@@ -137,8 +137,8 @@ std::vector<SpatialLayer> ConfigureSvcNormalVideo(
+     // TODO(ssilkin): Add to the comment PSNR/SSIM we get at encoding certain
+     // video to min/max bitrate specified by those formulas.
+     const size_t num_pixels = spatial_layer.width * spatial_layer.height;
+-    int min_bitrate =
+-        static_cast<int>((600. * std::sqrt(num_pixels) - 95000.) / 1000.);
++    const double sqrt_pixels = std::sqrt(static_cast<double>(num_pixels));
++    int min_bitrate = static_cast<int>((600. * sqrt_pixels - 95000.) / 1000.);
+     min_bitrate = std::max(min_bitrate, 0);
+     spatial_layer.minBitrate =
+         std::max(static_cast<size_t>(min_bitrate), kMinVp9SvcBitrateKbps);
+diff --git a/rtc_base/byte_order.h b/rtc_base/byte_order.h
+index b8f8ae9f7ad8086833d4b6a787138535afd7682a..9ec5b0adf57764bc7c1ef892efa7677263db105f 100644
+--- a/rtc_base/byte_order.h
++++ b/rtc_base/byte_order.h
+@@ -90,6 +90,8 @@
+ #error WEBRTC_ARCH_BIG_ENDIAN or WEBRTC_ARCH_LITTLE_ENDIAN must be defined.
+ #endif  // defined(WEBRTC_ARCH_LITTLE_ENDIAN)
+ 
++#elif defined(__QNXNTO__)
++#include <net/netbyte.h>
+ #elif defined(WEBRTC_POSIX)
+ #include <endian.h>
+ #else
+diff --git a/rtc_base/net_test_helpers.cc b/rtc_base/net_test_helpers.cc
+index 806d7dee60c02fbf81b6ff38b236cfd4ddf7fde0..2da84a659d9c4f41af6964ca5a08b7a4889c7630 100644
+--- a/rtc_base/net_test_helpers.cc
++++ b/rtc_base/net_test_helpers.cc
+@@ -21,6 +21,7 @@
+ #endif
+ #if defined(WEBRTC_POSIX) && !defined(__native_client__)
+ #include <arpa/inet.h>
++#include <sys/socket.h>
+ #if defined(WEBRTC_ANDROID)
+ #include "rtc_base/ifaddrs_android.h"
+ #else
+diff --git a/rtc_base/physical_socket_server.cc b/rtc_base/physical_socket_server.cc
+index b0af1c20ce2cf0eb9cda6f8496cc542f3dfd6a9f..0a1220091e223a373e769d72651febe75054aeeb 100644
+--- a/rtc_base/physical_socket_server.cc
++++ b/rtc_base/physical_socket_server.cc
+@@ -462,10 +462,12 @@ int PhysicalSocket::DoReadFromSocket(void* buffer,
+       msg.msg_name = addr;
+       msg.msg_namelen = addr_len;
+     }
+-    char control[CMSG_SPACE(sizeof(struct timeval))] = {};
++    // QNX computes CMSG_SPACE at runtime, so initialize the buffer separately.
++    alignas(struct cmsghdr) char control[CMSG_SPACE(sizeof(struct timeval))];
+     if (timestamp) {
++      memset(control, 0, sizeof(control));
+       *timestamp = -1;
+-      msg.msg_control = &control;
++      msg.msg_control = control;
+       msg.msg_controllen = sizeof(control);
+     }
+     received = ::recvmsg(s_, &msg, 0);
+diff --git a/rtc_base/string_to_number.cc b/rtc_base/string_to_number.cc
+index 1209eced44826daaeae31da38c139dd4334d0dab..5e206e3828f37d4b2003e490ebe99318e81bc7b5 100644
+--- a/rtc_base/string_to_number.cc
++++ b/rtc_base/string_to_number.cc
+@@ -11,6 +11,7 @@
+ #include "rtc_base/string_to_number.h"
+ 
+ #include <ctype.h>
++#include <stdlib.h>
+ 
+ #include <cerrno>
+ #include <cstdlib>
+@@ -28,7 +29,7 @@ absl::optional<signed_type> ParseSigned(absl::string_view str, int base) {
+     std::string str_str(str);
+     char* end = nullptr;
+     errno = 0;
+-    const signed_type value = std::strtoll(str_str.c_str(), &end, base);
++    const signed_type value = ::strtoll(str_str.c_str(), &end, base);
+     // Check for errors and also make sure that there were no embedded nuls in
+     // the input string.
+     if (end == str_str.c_str() + str_str.size() && errno == 0) {
+@@ -44,13 +45,13 @@ absl::optional<unsigned_type> ParseUnsigned(absl::string_view str, int base) {
+ 
+   if (isdigit(static_cast<unsigned char>(str[0])) || str[0] == '-') {
+     std::string str_str(str);
+-    // Explicitly discard negative values. std::strtoull parsing causes unsigned
++    // Explicitly discard negative values. ::strtoull parsing causes unsigned
+     // wraparound. We cannot just reject values that start with -, though, since
+     // -0 is perfectly fine, as is -0000000000000000000000000000000.
+     const bool is_negative = str[0] == '-';
+     char* end = nullptr;
+     errno = 0;
+-    const unsigned_type value = std::strtoull(str_str.c_str(), &end, base);
++    const unsigned_type value = ::strtoull(str_str.c_str(), &end, base);
+     // Check for errors and also make sure that there were no embedded nuls in
+     // the input string.
+     if (end == str_str.c_str() + str_str.size() && errno == 0 &&
+diff --git a/rtc_base/system/asm_defines.h b/rtc_base/system/asm_defines.h
+index a7f6aad272f174419437ad6622eaf09736f33c2e..debf5c10dba136ec0f73d2fe746470d35080022a 100644
+--- a/rtc_base/system/asm_defines.h
++++ b/rtc_base/system/asm_defines.h
+@@ -42,7 +42,7 @@ bl _\name
+ .hidden \name
+ .endm
+ .macro DEFINE_FUNCTION name
+-#if defined(__linux__) && defined(__ELF__)
++#if defined(__QNXNTO__) || (defined(__linux__) && defined(__ELF__))
+ .type \name,%function
+ #endif
+ \name:
